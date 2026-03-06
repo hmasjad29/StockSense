@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from flask import jsonify
+import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, MetaData, Table, Column
 from sqlalchemy import Integer, String, Float, text
@@ -92,3 +94,11 @@ def insert_sample_data():
         conn.commit()
 
     return {"message": "Sample data inserted successfully"}
+
+    # Sample prediction function
+def predict_forex():
+    return {"prediction": 1.25}
+
+@app.route("/predict", methods=["GET"])
+def get_prediction():
+    return jsonify(predict_forex())
