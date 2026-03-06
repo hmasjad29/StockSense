@@ -95,12 +95,17 @@ def insert_sample_data():
 
     return {"message": "Sample data inserted successfully"}
 
+feature/backend-api
     ## Sample prediction function
+
+    # Sample prediction function
+main
 def predict_forex():
     return {"prediction": 1.25}
 
 @app.route("/predict", methods=["GET"])
 def get_prediction():
+feature/backend-api
     return jsonify(predict_forex())
 
 # Endpoint to get the most recent prediction
@@ -111,3 +116,6 @@ def latest_prediction():
         return jsonify(prediction_history[-1])
     else:
         return jsonify({"message": "No predictions yet"})
+
+    return jsonify(predict_forex())
+main
