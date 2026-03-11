@@ -1,35 +1,65 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import "./index.css";
+import TopBar from "./components/layout/TopBar";
+import PricePanel from "./components/panels/PricePanel";
+import PredictionCard from "./components/panels/PredictionCard";
+import { RSIChartCard, MACDChartCard } from "./components/panels/RSIChartCard";
+import ModelPerformance from "./components/panels/ModelPerformance";
+import FeatureImportance from "./components/panels/FeatureImportance";
+import PredictionHistory from "./components/panels/PredictionHistory";
+import Footer from "./components/panels/Footer";
+import { mock } from "./mock/mockData";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [symbol, setSymbol] = useState("AAPL");
+  const [lastUpdated, setLastUpdated] = useState(mock.header.lastUpdated);
+
+  const onRefresh = () => {
+    // later: call backend endpoints and update state
+    setLastUpdated("Just now");
+    setTimeout(() => setLastUpdated("1 min ago"), 1200);
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <div className="bg-slate-950 min-h-screen">
+      <div className="mx-auto max-w-6xl px-4 py-6 red">
+        <TopBar
+          symbol={symbol}
+          setSymbol={setSymbol}
+          lastUpdated={lastUpdated}
+          onRefresh={onRefresh}
+        />
 
-export default App
+        {/* Main grid like the mockup */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div className="lg:col-span-8">
+            <PricePanel />
+          </div>
+          <div className="lg:col-span-4">
+            <PredictionCard data={mock.prediction} />
+          </div>
+
+          <div className="lg:col-span-6">
+            <RSIChartCard />
+          </div>
+          <div className="lg:col-span-6">
+            <MACDChartCard />
+          </div>
+
+          <div className="lg:col-span-8">
+            <ModelPerformance data={mock.model} />
+          </div>
+          <div className="lg:col-span-4">
+            <FeatureImportance items={mock.featureImportance} />
+          </div>
+
+          <div className="lg:col-span-12">
+            <PredictionHistory rows={mock.history} />
+          </div>
+        </div>
+
+        <Footer />
+      </div>
+    </div>
+  );
+}
