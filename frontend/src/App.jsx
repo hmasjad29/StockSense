@@ -22,7 +22,7 @@ export default function App() {
 
   return (
     <div className="bg-slate-950 min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-6 red">
+      <div className="mx-auto max-w-6xl px-4 py-6 ">
         <TopBar
           symbol={symbol}
           setSymbol={setSymbol}
