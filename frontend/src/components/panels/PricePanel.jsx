@@ -37,7 +37,7 @@ export default function PricePanel() {
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
-      width: chartContainerRef.current.clientWidth || 600,
+      width: chartContainerRef.current.clientWidth || 400,
       height: 360,
       layout: {
         background: { color: "#0f172a" },
