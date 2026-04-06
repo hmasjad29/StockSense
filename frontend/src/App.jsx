@@ -3,7 +3,8 @@ import "./index.css";
 import TopBar from "./components/layout/TopBar";
 import PricePanel from "./components/panels/PricePanel";
 import PredictionCard from "./components/panels/PredictionCard";
-import { RSIChartCard, MACDChartCard } from "./components/panels/RSIChartCard";
+import RSIChartCard from "./components/panels/RSIChartCard";
+import MACDChartCard from "./components/panels/MACDChartCard";
 import ModelPerformance from "./components/panels/ModelPerformance";
 import FeatureImportance from "./components/panels/FeatureImportance";
 import PredictionHistory from "./components/panels/PredictionHistory";
@@ -22,7 +23,7 @@ export default function App() {
 
   return (
     <div className="bg-slate-950 min-h-screen">
-      <div className="mx-auto max-w-6xl px-4 py-6 red">
+      <div className="mx-auto max-w-6xl px-4 py-6 ">
         <TopBar
           symbol={symbol}
           setSymbol={setSymbol}
