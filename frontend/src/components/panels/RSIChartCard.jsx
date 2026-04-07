@@ -23,7 +23,7 @@ export default function RSIChartCard() {
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={mockRSI}>
             <XAxis dataKey="time" hide />
-            <YAxis domain={[0, 100]} hide />
+            <YAxis domain={[0, 100]}  hide/>
 
             {/* Overbought line */}
             <ReferenceLine y={70} stroke="red" strokeDasharray="3 3" />
