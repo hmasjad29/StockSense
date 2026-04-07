@@ -2,6 +2,7 @@ import pandas as pd
 import sqlite3
 import os
 from datetime import datetime
+print("===STOCK DATABASE PIPELINE STARTED===")
 
 # Paths (relative to database/ folder)
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "backend", "stock.db")
@@ -44,12 +45,12 @@ def convert_wide_to_long():
     # Convert each stock block to long format
     long_dfs = []
     for i, ticker in enumerate(tickers):
-        stock_df['symbol'] = ticker
         start_col = col_groups[i]
         cols = [0, start_col, start_col+1, start_col+2, start_col+3, start_col+4]  # date + Close,High,Low,Open,Volume
         stock_df = data_df[cols].copy()
         stock_df.columns = ['date', 'close', 'high', 'low', 'open', 'volume']
         stock_df['symbol'] = ticker
+        print(f"Processing {ticker}")
 
         # Drop rows with no data for this stock
         stock_df = stock_df.dropna(subset=['close'])
@@ -57,6 +58,7 @@ def convert_wide_to_long():
 
     # Combine all
     long_df = pd.concat(long_dfs, ignore_index=True)
+    print("All stocks merged into long format")
 
     # Convert Excel serial date → proper datetime
     long_df['date'] = pd.to_datetime(long_df['date'], unit='d', origin='1899-12-30', errors='coerce')
@@ -76,6 +78,7 @@ def load_data():
         return
 
     conn = sqlite3.connect(DB_PATH)
+    print("Loading data into SQLite database...")
     long_df.to_sql("stocks", conn, if_exists="replace", index=False)
     conn.close()
 
