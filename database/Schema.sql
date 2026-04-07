@@ -8,3 +8,5 @@ CREATE TABLE IF NOT EXISTS Stocks_data (
     close FLOAT,
     volume FLOAT
 );
+
+CREATE INDEX idx_currency_date ON Stocks_data(currency_pair, date);
