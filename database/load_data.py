@@ -16,7 +16,11 @@ def convert_wide_to_long():
     print("Excel file loaded")
 
     print("📂 Reading Stocks_data.xlsx (wide format)...")
-    df_raw = pd.read_excel(XLSX_PATH, sheet_name="20_stocks_2018_2025", header=None)
+    try:
+        df_raw = pd.read_excel(XLSX_PATH, sheet_name="20_stocks_2018_2025", header=None)
+    except Exception as e:
+        print(f"❌ Error reading Excel file: {e}")
+        exit()
 
     # Ticker row is row index 1
     ticker_row = df_raw.iloc[1].fillna('').astype(str).str.strip()
