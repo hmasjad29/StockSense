@@ -2,6 +2,7 @@ import pandas as pd
 import sqlite3
 import os
 from datetime import datetime
+print("===STOCK DATABASE PIPELINE STARTED===")
 
 # Paths (relative to database/ folder)
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "backend", "stock.db")
@@ -15,7 +16,11 @@ def convert_wide_to_long():
     print("Excel file loaded")
 
     print("📂 Reading Stocks_data.xlsx (wide format)...")
-    df_raw = pd.read_excel(XLSX_PATH, sheet_name="20_stocks_2018_2025", header=None)
+    try:
+        df_raw = pd.read_excel(XLSX_PATH, sheet_name="20_stocks_2018_2025", header=None)
+    except Exception as e:
+        print(f"❌ Error reading Excel file: {e}")
+        exit()
 
     # Ticker row is row index 1
     ticker_row = df_raw.iloc[1].fillna('').astype(str).str.strip()
@@ -44,12 +49,12 @@ def convert_wide_to_long():
     # Convert each stock block to long format
     long_dfs = []
     for i, ticker in enumerate(tickers):
-        stock_df['symbol'] = ticker
         start_col = col_groups[i]
         cols = [0, start_col, start_col+1, start_col+2, start_col+3, start_col+4]  # date + Close,High,Low,Open,Volume
         stock_df = data_df[cols].copy()
         stock_df.columns = ['date', 'close', 'high', 'low', 'open', 'volume']
         stock_df['symbol'] = ticker
+        print(f"Processing {ticker}")
 
         # Drop rows with no data for this stock
         stock_df = stock_df.dropna(subset=['close'])
@@ -57,6 +62,7 @@ def convert_wide_to_long():
 
     # Combine all
     long_df = pd.concat(long_dfs, ignore_index=True)
+    print("All stocks merged into long format")
 
     # Convert Excel serial date → proper datetime
     if pd.api.types.is_numeric_dtype(long_df['date']):
@@ -81,6 +87,7 @@ def load_data():
         return
 
     conn = sqlite3.connect(DB_PATH)
+    print("Loading data into SQLite database...")
     long_df.to_sql("stocks", conn, if_exists="replace", index=False)
     conn.close()
 
