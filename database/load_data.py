@@ -59,7 +59,12 @@ def convert_wide_to_long():
     long_df = pd.concat(long_dfs, ignore_index=True)
 
     # Convert Excel serial date → proper datetime
-    long_df['date'] = pd.to_datetime(long_df['date'], unit='d', origin='1899-12-30', errors='coerce')
+    if pd.api.types.is_numeric_dtype(long_df['date']):
+     long_df['date'] = pd.to_datetime(long_df['date'], unit='d', origin='1899-12-30')
+    else:
+     long_df['date'] = pd.to_datetime(long_df['date'], errors='coerce')
+     
+    # long_df['date'] = pd.to_datetime(long_df['date'], unit='d', origin='1899-12-30', errors='coerce')
     long_df = long_df.dropna(subset=['date'])
     long_df['date'] = long_df['date'].dt.strftime('%Y-%m-%d')
 
@@ -89,4 +94,3 @@ def load_data():
 
 if __name__ == "__main__":
     load_data()
-    
