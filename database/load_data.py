@@ -12,12 +12,14 @@ def convert_wide_to_long():
         print(f"❌ Stocks_data.xlsx not found at {XLSX_PATH}")
         print("   Put the xlsx file in the root folder (next to backend/ and database/)")
         return None
+    print("Excel file loaded")
 
     print("📂 Reading Stocks_data.xlsx (wide format)...")
     df_raw = pd.read_excel(XLSX_PATH, sheet_name="20_stocks_2018_2025", header=None)
 
     # Ticker row is row index 1
     ticker_row = df_raw.iloc[1].fillna('').astype(str).str.strip()
+    print("Ticker row extracted")
 
     # Data starts at row index 3
     data_df = df_raw.iloc[3:].copy().reset_index(drop=True)
@@ -42,6 +44,7 @@ def convert_wide_to_long():
     # Convert each stock block to long format
     long_dfs = []
     for i, ticker in enumerate(tickers):
+        stock_df['symbol'] = ticker
         start_col = col_groups[i]
         cols = [0, start_col, start_col+1, start_col+2, start_col+3, start_col+4]  # date + Close,High,Low,Open,Volume
         stock_df = data_df[cols].copy()
