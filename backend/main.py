@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
+from pydantic import BaseModel, EmailStr
+from passlib.context import CryptContext
+from jose import jwt
+from datetime import datetime, timedelta
 import pandas as pd
 
 app = FastAPI(title="StockSense API", version="1.0.0")
@@ -15,6 +19,38 @@ app.add_middleware(
 
 DATABASE_URL = "sqlite:///stock.db"
 engine = create_engine(DATABASE_URL, echo=False)
+
+SECRET_KEY = "stocksense-secret-key-change-this"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+class SignupRequest(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str):
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def compute_rsi(series: pd.Series, period: int = 14) -> pd.Series:
@@ -47,9 +83,18 @@ def compute_macd(series: pd.Series) -> pd.DataFrame:
 @app.on_event("startup")
 async def startup_event():
     with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            )
+        """))
+        conn.commit()
+
         count = conn.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
         print(f"✅ StockSense API started | {count} rows in DB")
-
 
 @app.get("/")
 def home():
@@ -180,6 +225,65 @@ def get_model_metrics(symbol: str):
         "f1": 0.60,
         "validation": "Time-series split"
     }
+@app.post("/api/auth/signup")
+def signup_user(payload: SignupRequest):
+    if len(payload.password.encode("utf-8")) > 72:
+        return {
+            "success": False,
+            "message": "Password must be 72 characters or fewer."
+        }
+
+    with engine.connect() as conn:
+        existing_user = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": payload.email}
+        ).fetchone()
+
+        if existing_user:
+            return {"success": False, "message": "Email already registered"}
+
+        password_hash = hash_password(payload.password)
+
+        conn.execute(
+            text("""
+                INSERT INTO users (name, email, password_hash)
+                VALUES (:name, :email, :password_hash)
+            """),
+            {
+                "name": payload.name,
+                "email": payload.email,
+                "password_hash": password_hash,
+            }
+        )
+        conn.commit()
+
+
+@app.post("/api/auth/login")
+def login_user(payload: LoginRequest):
+    with engine.connect() as conn:
+        user = conn.execute(
+            text("SELECT name, email, password_hash FROM users WHERE email = :email"),
+            {"email": payload.email}
+        ).fetchone()
+
+    if not user:
+        return {"success": False, "message": "Invalid email or password"}
+
+    name, email, password_hash = user
+
+    if not verify_password(payload.password, password_hash):
+        return {"success": False, "message": "Invalid email or password"}
+
+    token = create_access_token({"sub": email})
+
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "name": name,
+            "email": email,
+        }
+    }
 
 
 
@@ -189,105 +293,3 @@ def get_model_metrics(symbol: str):
 
 
 
-
-
-# from fastapi import FastAPI, Query
-# from fastapi.middleware.cors import CORSMiddleware
-# from sqlalchemy import create_engine, text
-# import pandas as pd
-# from typing import Optional
-
-# app = FastAPI(title="StockSense API", version="1.0.0")
-
-# # CORS for React (Vite default port)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# DATABASE_URL = "sqlite:///stock.db"
-# engine = create_engine(DATABASE_URL, echo=False)
-
-# @app.on_event("startup")
-# async def startup_event():
-#     with engine.connect() as conn:
-#         count = conn.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
-#         print(f"✅ StockSense API started | {count} rows in DB")
-
-# @app.get("/")
-# def home():
-#     return {"status": "StockSense backend is running 🚀"}
-
-# # Get all unique symbols
-# @app.get("/api/stocks/symbols")
-# def get_symbols():
-#     with engine.connect() as conn:
-#         symbols = [row[0] for row in conn.execute(text("SELECT DISTINCT symbol FROM stocks")).fetchall()]
-#     return {"symbols": symbols}
-
-# # Get OHLCV data for a symbol (used by charts)
-# @app.get("/api/stocks/{symbol}")
-# def get_stock_data(
-#     symbol: str,
-#     limit: int = Query(365, description="Number of days")
-# ):
-#     query = text("SELECT date, open, high, low, close, volume FROM stocks WHERE symbol = :symbol ORDER BY date DESC LIMIT :limit")
-#     with engine.connect() as conn:
-#         df = pd.read_sql_query(query, conn, params={"symbol": symbol.upper(), "limit": limit})
-#     df = df.sort_values("date")  # ascending for charts
-#     return df.to_dict(orient="records")
-
-# # Technical indicators (real calculation with pandas_ta)
-# @app.get("/api/indicator/{symbol}/{indicator}")
-# def get_indicator(symbol: str, indicator: str):
-#     # Fetch last 100 days for calculation
-#     query = text("SELECT date, open, high, low, close, volume FROM stocks WHERE symbol = :symbol ORDER BY date DESC LIMIT 100")
-#     with engine.connect() as conn:
-#         df = pd.read_sql_query(query, conn, params={"symbol": symbol.upper()})
-#     if df.empty:
-#         return {"error": "No data"}
-
-#     import pandas_ta as ta
-#     df = df.sort_index(ascending=False)  # for ta
-#     if indicator.lower() == "rsi":
-#         df["rsi"] = ta.rsi(df["close"], length=14)
-#         value = float(df["rsi"].iloc[0])
-#     elif indicator.lower() == "macd":
-#         macd = ta.macd(df["close"])
-#         value = float(macd["MACD_12_26_9"].iloc[0])
-#     else:
-#         value = 0.0
-
-#     return {"symbol": symbol, "indicator": indicator.upper(), "value": round(value, 2)}
-
-# # Next-candle prediction (simple + extensible for your RandomForest later)
-# @app.get("/api/predict/{symbol}")
-# def predict_next(symbol: str):
-#     # Fetch recent data
-#     with engine.connect() as conn:
-#         df = pd.read_sql_query(
-#             text("SELECT close FROM stocks WHERE symbol = :symbol ORDER BY date DESC LIMIT 20"),
-#             conn, params={"symbol": symbol.upper()}
-#         )
-#     if len(df) < 5:
-#         return {"error": "Not enough data"}
-
-#     # Simple momentum prediction (replace with your full RF + ICT/FVG later)
-#     last_close = float(df["close"].iloc[0])
-#     trend = "UP" if df["close"].iloc[0] > df["close"].iloc[4] else "DOWN"
-#     confidence = 0.72 + (0.05 if trend == "UP" else -0.03)  # placeholder
-
-#     return {
-#         "symbol": symbol,
-#         "next_trend": trend,
-#         "predicted_close": round(last_close * (1.012 if trend == "UP" else 0.988), 2),
-#         "confidence": round(confidence, 2),
-#         "note": "Replace with full ML model (RandomForest + ICT/FVG) in final demo"
-#     }
-
-
-
-# # Run with: uvicorn main:app --reload --port 8000
