@@ -28,7 +28,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class SignupRequest(BaseModel):
-    name: str
+    first_name: str
+    last_name: str
     email: EmailStr
     password: str
 
@@ -86,15 +87,40 @@ async def startup_event():
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL
+                password_hash TEXT NOT NULL,
+                reset_token TEXT,
+                reset_token_expiry TEXT
             )
         """))
+
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN first_name TEXT"))
+        except:
+            pass
+
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN last_name TEXT"))
+        except:
+            pass
+
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN reset_token TEXT"))
+        except:
+            pass
+
+        try:
+            conn.execute(text("ALTER TABLE users ADD COLUMN reset_token_expiry TEXT"))
+        except:
+            pass
+
         conn.commit()
 
         count = conn.execute(text("SELECT COUNT(*) FROM stocks")).scalar()
         print(f"✅ StockSense API started | {count} rows in DB")
+
 
 @app.get("/")
 def home():
@@ -112,6 +138,7 @@ def get_symbols():
         ]
     return {"symbols": symbols}
 
+
 @app.get("/api/stocks/{symbol}")
 def get_stock_data(symbol: str, limit: int = Query(365, description="Number of days")):
     query = text(
@@ -119,11 +146,13 @@ def get_stock_data(symbol: str, limit: int = Query(365, description="Number of d
         "FROM stocks WHERE symbol = :symbol "
         "ORDER BY date DESC LIMIT :limit"
     )
+
     with engine.connect() as conn:
         df = pd.read_sql_query(query, conn, params={"symbol": symbol.upper(), "limit": limit})
 
     df = df.sort_values("date")
     return df.to_dict(orient="records")
+
 
 @app.get("/api/indicator/{symbol}/{indicator}")
 def get_indicator(symbol: str, indicator: str):
@@ -201,6 +230,9 @@ def predict_next(symbol: str):
     if len(df) < 5:
         return {"error": "Not enough data"}
 
+    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    df = df.dropna(subset=["close"])
+
     last_close = float(df["close"].iloc[0])
     trend = "UP" if df["close"].iloc[0] > df["close"].iloc[4] else "DOWN"
     confidence = 0.72 + (0.05 if trend == "UP" else -0.03)
@@ -210,13 +242,12 @@ def predict_next(symbol: str):
         "next_trend": trend,
         "predicted_close": round(last_close * (1.012 if trend == "UP" else 0.988), 2),
         "confidence": round(confidence, 2),
-        "note": "Replace with full ML model (RandomForest + ICT/FVG) in final demo"
+        "note": "Replace with full ML model later"
     }
+
 
 @app.get("/api/model/metrics/{symbol}")
 def get_model_metrics(symbol: str):
-    # Placeholder metrics for now
-    # Later replace with real model evaluation results
     return {
         "symbol": symbol.upper(),
         "accuracy": 0.61,
@@ -225,6 +256,8 @@ def get_model_metrics(symbol: str):
         "f1": 0.60,
         "validation": "Time-series split"
     }
+
+
 @app.post("/api/auth/signup")
 def signup_user(payload: SignupRequest):
     if len(payload.password.encode("utf-8")) > 72:
@@ -246,30 +279,48 @@ def signup_user(payload: SignupRequest):
 
         conn.execute(
             text("""
-                INSERT INTO users (name, email, password_hash)
-                VALUES (:name, :email, :password_hash)
+                INSERT INTO users (first_name, last_name, email, password_hash)
+                VALUES (:first_name, :last_name, :email, :password_hash)
             """),
             {
-                "name": payload.name,
+                "first_name": payload.first_name,
+                "last_name": payload.last_name,
                 "email": payload.email,
                 "password_hash": password_hash,
             }
         )
+
         conn.commit()
+
+    token = create_access_token({"sub": payload.email})
+
+    return {
+        "success": True,
+        "token": token,
+        "user": {
+            "first_name": payload.first_name,
+            "last_name": payload.last_name,
+            "email": payload.email,
+        }
+    }
 
 
 @app.post("/api/auth/login")
 def login_user(payload: LoginRequest):
     with engine.connect() as conn:
         user = conn.execute(
-            text("SELECT name, email, password_hash FROM users WHERE email = :email"),
+            text("""
+                SELECT first_name, last_name, email, password_hash
+                FROM users
+                WHERE email = :email
+            """),
             {"email": payload.email}
         ).fetchone()
 
     if not user:
         return {"success": False, "message": "Invalid email or password"}
 
-    name, email, password_hash = user
+    first_name, last_name, email, password_hash = user
 
     if not verify_password(payload.password, password_hash):
         return {"success": False, "message": "Invalid email or password"}
@@ -280,7 +331,8 @@ def login_user(payload: LoginRequest):
         "success": True,
         "token": token,
         "user": {
-            "name": name,
+            "first_name": first_name,
+            "last_name": last_name,
             "email": email,
         }
     }

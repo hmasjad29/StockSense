@@ -7,7 +7,8 @@ export default function Signup() {
   const { signup } = useAuth();
 
   const [form, setForm] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -28,7 +29,12 @@ export default function Signup() {
     return;
   }
 
-  const result = await signup(form.name, form.email, form.password);
+  const result = await signup(
+    form.firstName,
+    form.lastName,
+    form.email,
+    form.password
+  );
 
   if (result.success) {
     navigate("/");
@@ -51,14 +57,27 @@ export default function Signup() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-white/70 mb-2">Name</label>
+            <label className="block text-sm text-white/70 mb-2">First Name</label>
             <input
               type="text"
-              name="name"
-              value={form.name}
+              name="firstName"
+              value={form.firstName}
               onChange={handleChange}
               className="w-full rounded-xl bg-white/10 border border-white/10 px-4 py-3 text-white outline-none"
-              placeholder="Your name"
+              placeholder="Enter first name"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-white/70 mb-2">Last Name</label>
+            <input
+              type="text"
+              name="lastName"
+              value={form.lastName}
+              onChange={handleChange}
+              className="w-full rounded-xl bg-white/10 border border-white/10 px-4 py-3 text-white outline-none"
+              placeholder="Enter last name"
               required
             />
           </div>
@@ -71,7 +90,7 @@ export default function Signup() {
               value={form.email}
               onChange={handleChange}
               className="w-full rounded-xl bg-white/10 border border-white/10 px-4 py-3 text-white outline-none"
-              placeholder="you@example.com"
+              placeholder="Enter your email"
               required
             />
           </div>
