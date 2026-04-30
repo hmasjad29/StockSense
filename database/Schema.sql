@@ -1,25 +1,24 @@
-CREATE TABLE IF NOT EXISTS Stocks_data (
-    id INT PRIMARY KEY,
-    date DATE,
-    currency_pair VARCHAR(10),
-    open FLOAT,
-    high FLOAT,
-    low FLOAT,
-    close FLOAT,
-    volume FLOAT
-);
+-- StockSense Database Schema
 
-CREATE INDEX idx_currency_date ON Stocks_data(currency_pair, date);
 CREATE TABLE IF NOT EXISTS stocks (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol TEXT NOT NULL,
-    date TEXT NOT NULL,
-    open REAL,
-    high REAL,
-    low REAL,
-    close REAL,
-    volume INTEGER
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol  TEXT    NOT NULL,
+    date    TEXT    NOT NULL,
+    open    REAL,
+    high    REAL,
+    low     REAL,
+    close   REAL,
+    volume  INTEGER
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_symbol_date 
-ON stocks (symbol, date);
+CREATE INDEX IF NOT EXISTS idx_stocks_symbol_date ON stocks (symbol, date);
+
+CREATE TABLE IF NOT EXISTS users (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name          TEXT NOT NULL,
+    last_name           TEXT NOT NULL,
+    email               TEXT UNIQUE NOT NULL,
+    password_hash       TEXT NOT NULL,
+    reset_token         TEXT,
+    reset_token_expiry  TEXT
+);
