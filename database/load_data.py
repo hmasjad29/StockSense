@@ -1,103 +1,136 @@
-import pandas as pd
-import sqlite3
-import os
-from datetime import datetime
-print("===STOCK DATABASE PIPELINE STARTED===")
+"""
+load_data.py  –  StockSense Database Seeder
+=========================================
+Two modes:
+  1. XLSX mode (original): reads Stocks_data.xlsx from project root
+  2. Live mode: downloads 2 years of data from yfinance for all 20 stocks
 
-# Paths (relative to database/ folder)
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "backend", "stock.db")
+Run from the database/ folder:
+  python load_data.py          # tries XLSX first, then falls back to yfinance
+  python load_data.py --live   # forces yfinance download
+"""
+import sys, os, sqlite3, time
+import pandas as pd
+
+DB_PATH   = os.path.join(os.path.dirname(__file__), "..", "backend", "stock.db")
 XLSX_PATH = os.path.join(os.path.dirname(__file__), "..", "Stocks_data.xlsx")
 
-def convert_wide_to_long():
-    if not os.path.exists(XLSX_PATH):
-        print(f"❌ Stocks_data.xlsx not found at {XLSX_PATH}")
-        print("   Put the xlsx file in the root folder (next to backend/ and database/)")
-        return None
-    print("Excel file loaded")
+MAJOR_STOCKS = [
+    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
+    "NVDA", "AMD",  "INTC",  "TSLA", "JPM",
+    "BAC",  "GS",   "WMT",   "COST", "NKE",
+    "DIS",  "PEP",  "KO",    "GM",   "F"
+]
 
-    print("📂 Reading Stocks_data.xlsx (wide format)...")
+print("=== StockSense Database Pipeline ===")
+
+def load_from_xlsx():
+    if not os.path.exists(XLSX_PATH):
+        return None
+    print(f"📂 Reading {XLSX_PATH}...")
     try:
         df_raw = pd.read_excel(XLSX_PATH, sheet_name="20_stocks_2018_2025", header=None)
     except Exception as e:
-        print(f"❌ Error reading Excel file: {e}")
-        exit()
+        print(f"❌ Error reading Excel: {e}")
+        return None
 
-    # Ticker row is row index 1
-    ticker_row = df_raw.iloc[1].fillna('').astype(str).str.strip()
-    print("Ticker row extracted")
+    ticker_row  = df_raw.iloc[1].fillna("").astype(str).str.strip()
+    data_df     = df_raw.iloc[3:].copy().reset_index(drop=True)
+    data_df.columns = range(data_df.shape[1])
 
-    # Data starts at row index 3
-    data_df = df_raw.iloc[3:].copy().reset_index(drop=True)
-    data_df.columns = range(data_df.shape[1])   # numeric columns
-
-    # Detect ticker start columns dynamically
-    tickers = []
-    col_groups = []
-    current = None
-    known_tickers = {'AAPL','MSFT','GOOGL','AMZN','META','NVDA','AMD','INTC','TSLA',
-                     'GM','F','JPM','BAC','GS','WMT','COST','NKE','DIS','PEP','KO'}
-
-    for col in range(len(ticker_row)):
-        val = ticker_row[col]
-        if val in known_tickers and val != current:
-            current = val
-            tickers.append(val)
-            col_groups.append(col)   # start of Close column for this stock
+    known = set(MAJOR_STOCKS)
+    tickers, col_groups, current = [], [], None
+    for col, val in enumerate(ticker_row):
+        if val in known and val != current:
+            current = val; tickers.append(val); col_groups.append(col)
 
     print(f"✅ Detected {len(tickers)} stocks: {tickers}")
-
-    # Convert each stock block to long format
     long_dfs = []
     for i, ticker in enumerate(tickers):
-        start_col = col_groups[i]
-        cols = [0, start_col, start_col+1, start_col+2, start_col+3, start_col+4]  # date + Close,High,Low,Open,Volume
-        stock_df = data_df[cols].copy()
-        stock_df.columns = ['date', 'close', 'high', 'low', 'open', 'volume']
-        stock_df['symbol'] = ticker
-        print(f"Processing {ticker}")
+        sc = col_groups[i]
+        cols = [0, sc, sc+1, sc+2, sc+3, sc+4]
+        sdf = data_df[cols].copy()
+        sdf.columns = ["date","close","high","low","open","volume"]
+        sdf["symbol"] = ticker
+        sdf = sdf.dropna(subset=["close"])
+        long_dfs.append(sdf)
 
-        # Drop rows with no data for this stock
-        stock_df = stock_df.dropna(subset=['close'])
-        long_dfs.append(stock_df)
-
-    # Combine all
-    long_df = pd.concat(long_dfs, ignore_index=True)
-    print("All stocks merged into long format")
-
-    # Convert Excel serial date → proper datetime
-    if pd.api.types.is_numeric_dtype(long_df['date']):
-     long_df['date'] = pd.to_datetime(long_df['date'], unit='d', origin='1899-12-30')
+    df = pd.concat(long_dfs, ignore_index=True)
+    if pd.api.types.is_numeric_dtype(df["date"]):
+        df["date"] = pd.to_datetime(df["date"], unit="d", origin="1899-12-30")
     else:
-     long_df['date'] = pd.to_datetime(long_df['date'], errors='coerce')
-     
-    # long_df['date'] = pd.to_datetime(long_df['date'], unit='d', origin='1899-12-30', errors='coerce')
-    long_df = long_df.dropna(subset=['date'])
-    long_df['date'] = long_df['date'].dt.strftime('%Y-%m-%d')
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    df = df.dropna(subset=["date"])
+    df["date"] = df["date"].dt.strftime("%Y-%m-%d")
+    df = df[["symbol","date","open","high","low","close","volume"]]
+    df = df.sort_values(["symbol","date"]).reset_index(drop=True)
+    print(f"✅ Converted: {len(df):,} rows")
+    return df
 
-    # Final column order
-    long_df = long_df[['symbol', 'date', 'open', 'high', 'low', 'close', 'volume']]
-    long_df = long_df.sort_values(['symbol', 'date']).reset_index(drop=True)
+def load_from_yfinance():
+    try:
+        import yfinance as yf
+    except ImportError:
+        print("❌ yfinance not installed. Run: pip install yfinance")
+        return None
 
-    print(f"✅ Converted to long format: {len(long_df):,} rows")
-    return long_df
+    print("🌐 Downloading 2 years of data from yfinance...")
+    long_dfs = []
+    for i, sym in enumerate(MAJOR_STOCKS):
+        try:
+            ticker = yf.Ticker(sym)
+            hist   = ticker.history(period="2y", interval="1d", auto_adjust=True)
+            if hist.empty:
+                print(f"  ⚠️  No data for {sym}")
+                continue
+            df = hist.reset_index()
+            df = df.rename(columns={"Date":"date","Open":"open","High":"high",
+                                     "Low":"low","Close":"close","Volume":"volume"})
+            df["date"]   = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+            df["symbol"] = sym
+            df = df[["symbol","date","open","high","low","close","volume"]]
+            long_dfs.append(df)
+            print(f"  ✅ {sym}: {len(df)} rows  ({i+1}/{len(MAJOR_STOCKS)})")
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"  ❌ {sym}: {e}")
 
-def load_data():
-    long_df = convert_wide_to_long()
-    if long_df is None:
-        return
+    if not long_dfs:
+        return None
+    df = pd.concat(long_dfs, ignore_index=True)
+    df = df.sort_values(["symbol","date"]).reset_index(drop=True)
+    print(f"✅ Total: {len(df):,} rows downloaded")
+    return df
 
+def save_to_db(df):
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    print("Loading data into SQLite database...")
-    long_df.to_sql("stocks", conn, if_exists="replace", index=False)
-    conn.close()
-
-    # Quick verification
-    conn = sqlite3.connect(DB_PATH)
-    stats = pd.read_sql_query("SELECT symbol, COUNT(*) as rows, MIN(date) as from_date, MAX(date) as to_date FROM stocks GROUP BY symbol", conn)
+    print(f"💾 Saving to {DB_PATH}...")
+    df.to_sql("stocks", conn, if_exists="replace", index=False)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sym_date ON stocks(symbol, date)")
+    conn.commit()
+    stats = pd.read_sql_query(
+        "SELECT symbol, COUNT(*) rows, MIN(date) from_date, MAX(date) to_date FROM stocks GROUP BY symbol",
+        conn
+    )
     conn.close()
     print("\n📊 Database summary:")
     print(stats.to_string(index=False))
-    print(f"\n✅ SUCCESS! Database ready at {DB_PATH}")
+    print(f"\n✅ SUCCESS! DB ready at {DB_PATH}")
 
 if __name__ == "__main__":
-    load_data()
+    force_live = "--live" in sys.argv
+    df = None
+
+    if not force_live:
+        df = load_from_xlsx()
+        if df is None:
+            print("ℹ️  No XLSX found, falling back to yfinance download...")
+
+    if df is None:
+        df = load_from_yfinance()
+
+    if df is not None:
+        save_to_db(df)
+    else:
+        print("❌ Could not load data from any source. Check your setup.")
