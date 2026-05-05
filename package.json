@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "jose": "^6.2.3",
+    "passlib": "^0.3.0",
+    "uvicorn": "^0.0.1-security"
+  }
+}
